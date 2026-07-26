@@ -1,0 +1,46 @@
+server:
+  port: ${PORT:8081}
+
+spring:
+  application:
+    name: worknote
+
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:55916/worknote}
+    username: ${DB_USERNAME:postgres}
+    password: ${DB_PASSWORD:1234}
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: ${JPA_DDL_AUTO:update}
+    show-sql: ${JPA_SHOW_SQL:true}
+    open-in-view: false
+
+    properties:
+      hibernate:
+        format_sql: true
+        jdbc:
+          time_zone: Asia/Tokyo
+
+  docker:
+    compose:
+      enabled: false
+
+jwt:
+  secret: ${JWT_SECRET:worknote-local-jwt-secret-key-must-be-at-least-32-bytes-long}
+  expiration: ${JWT_EXPIRATION:86400000}
+
+ollama:
+  base-url: ${OLLAMA_BASE_URL:http://localhost:11434}
+  model: ${OLLAMA_MODEL:qwen2.5:3b}
+  api-key: ${OLLAMA_API_KEY:}
+  timeout-seconds: ${OLLAMA_TIMEOUT_SECONDS:180}
+
+app:
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173}
+
+report:
+  pdf:
+    font-path: ${REPORT_PDF_FONT_PATH:classpath:fonts/NotoSansKR-Regular.ttf}
