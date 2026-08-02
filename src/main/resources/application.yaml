@@ -43,7 +43,9 @@ app:
 
 report:
   pdf:
-    font-path: ${REPORT_PDF_FONT_PATH:classpath:fonts/NanumGothic.ttf}
+    korean-font-path: ${REPORT_PDF_KOREAN_FONT_PATH:classpath:fonts/NanumGothic.ttf}
+    japanese-font-path: ${REPORT_PDF_JAPANESE_FONT_PATH:classpath:fonts/ipaexg.ttf}
+
 springdoc:
   api-docs:
     enabled: ${SWAGGER_ENABLED:true}

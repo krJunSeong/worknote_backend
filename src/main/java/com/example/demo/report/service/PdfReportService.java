@@ -3,7 +3,6 @@ package com.example.demo.report.service;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.nio.file.Path;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
@@ -16,8 +15,9 @@ import org.apache.pdfbox.pdmodel.PDPageContentStream;
 import org.apache.pdfbox.pdmodel.common.PDRectangle;
 import org.apache.pdfbox.pdmodel.font.PDType0Font;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.io.ClassPathResource;
+import org.springframework.core.io.FileSystemResource;
 import org.springframework.core.io.Resource;
-import org.springframework.core.io.ResourceLoader;
 import org.springframework.stereotype.Service;
 
 import com.example.demo.report.dto.AiReportResponse;
@@ -28,7 +28,6 @@ import com.example.demo.report.dto.ReportStatistics;
 public class PdfReportService {
 
     private static final float PAGE_MARGIN = 52f;
-
     private static final float CONTENT_WIDTH =
             PDRectangle.A4.getWidth()
                     - PAGE_MARGIN * 2;
@@ -46,30 +45,61 @@ public class PdfReportService {
                     "yyyy.MM.dd"
             );
 
-    private final String configuredFontPath;
-    private final ResourceLoader resourceLoader;
+    private final String koreanFontPath;
+    private final String japaneseFontPath;
 
     public PdfReportService(
             @Value(
-                    "${report.pdf.font-path:"
-                            + "classpath:fonts/NotoSansKR-Regular.ttf}"
+                    "${report.pdf.korean-font-path:"
+                            + "classpath:fonts/NanumGothic.ttf}"
             )
-            String configuredFontPath,
-            ResourceLoader resourceLoader
+            String koreanFontPath,
+
+            @Value(
+                    "${report.pdf.japanese-font-path:"
+                            + "classpath:fonts/ipaexg.ttf}"
+            )
+            String japaneseFontPath
     ) {
-
-        this.configuredFontPath =
-                configuredFontPath;
-
-        this.resourceLoader =
-                resourceLoader;
+        this.koreanFontPath = koreanFontPath;
+        this.japaneseFontPath = japaneseFontPath;
     }
 
+    /**
+     * 기존 Controller 코드와의 호환을 위한 메서드입니다.
+     * 보고서 본문에 일본어 가나가 있으면 일본어 폰트를,
+     * 그렇지 않으면 한국어 폰트를 자동으로 선택합니다.
+     */
     public byte[] createPdf(
             AiReportResponse report
     ) {
+        ReportLanguage detectedLanguage =
+                detectReportLanguage(report);
+
+        return createPdf(
+                report,
+                detectedLanguage.code
+        );
+    }
+
+    /**
+     * Controller에서 language 파라미터를 명시적으로 넘길 때 사용할 수 있습니다.
+     * 지원값은 ko, ja이며 그 외 값은 ko로 처리합니다.
+     */
+    public byte[] createPdf(
+            AiReportResponse report,
+            String language
+    ) {
 
         validateReport(report);
+
+        ReportLanguage reportLanguage =
+                ReportLanguage.from(language);
+
+        PdfText text =
+                PdfText.forLanguage(
+                        reportLanguage
+                );
 
         try (
                 PDDocument document =
@@ -80,7 +110,10 @@ public class PdfReportService {
         ) {
 
             PDType0Font font =
-                    loadFont(document);
+                    loadFont(
+                            document,
+                            reportLanguage
+                    );
 
             PdfWriter writer =
                     new PdfWriter(
@@ -90,7 +123,9 @@ public class PdfReportService {
 
             writeReport(
                     writer,
-                    report
+                    report,
+                    text,
+                    reportLanguage
             );
 
             writer.close();
@@ -99,28 +134,32 @@ public class PdfReportService {
 
             return outputStream.toByteArray();
 
-        } catch (IOException e) {
+        } catch (IOException exception) {
             throw new RuntimeException(
-                    "PDF 보고서를 생성하지 못했습니다.",
-                    e
+                    reportLanguage == ReportLanguage.JAPANESE
+                            ? "PDFレポートを生成できませんでした。"
+                            : "PDF 보고서를 생성하지 못했습니다.",
+                    exception
             );
         }
     }
 
     private void writeReport(
             PdfWriter writer,
-            AiReportResponse report
+            AiReportResponse report,
+            PdfText text,
+            ReportLanguage language
     ) throws IOException {
 
         writer.writeCenteredText(
-                "AI 최종 업무 보고서",
+                text.title,
                 TITLE_SIZE,
                 0f,
                 28f
         );
 
         writer.writeCenteredText(
-                "전체 업무 로그 기반 종합 분석",
+                text.subtitle,
                 BODY_SIZE,
                 0f,
                 28f
@@ -133,11 +172,13 @@ public class PdfReportService {
 
         writeStatistics(
                 writer,
-                report.getStatistics()
+                report.getStatistics(),
+                text,
+                language
         );
 
         writer.writeSectionTitle(
-                "1. 지금까지 한 일들 요약"
+                text.workSummaryTitle
         );
 
         writer.writeParagraph(
@@ -145,16 +186,17 @@ public class PdfReportService {
         );
 
         writer.writeSectionTitle(
-                "2. 구현 기능들"
+                text.implementedFeaturesTitle
         );
 
         writeImplementedFeatures(
                 writer,
-                report.getImplementedFeatures()
+                report.getImplementedFeatures(),
+                text
         );
 
         writer.writeSectionTitle(
-                "3. 난이도 해설"
+                text.difficultyAnalysisTitle
         );
 
         writer.writeParagraph(
@@ -162,7 +204,7 @@ public class PdfReportService {
         );
 
         writer.writeSectionTitle(
-                "4. 프로젝트 성과"
+                text.projectAchievementsTitle
         );
 
         writer.writeParagraph(
@@ -170,12 +212,13 @@ public class PdfReportService {
         );
 
         writer.writeSectionTitle(
-                "5. 향후 개선 사항"
+                text.futureImprovementsTitle
         );
 
         writeFutureImprovements(
                 writer,
-                report.getFutureImprovements()
+                report.getFutureImprovements(),
+                text
         );
 
         writer.writeHorizontalLine(
@@ -184,7 +227,7 @@ public class PdfReportService {
         );
 
         writer.writeText(
-                "보고서 생성일: "
+                text.generatedDateLabel
                         + LocalDate.now()
                                 .format(
                                         DATE_FORMATTER
@@ -197,24 +240,26 @@ public class PdfReportService {
 
     private void writeStatistics(
             PdfWriter writer,
-            ReportStatistics statistics
+            ReportStatistics statistics,
+            PdfText text,
+            ReportLanguage language
     ) throws IOException {
 
         writer.writeSectionTitle(
-                "보고서 개요"
+                text.overviewTitle
         );
 
         writer.writeText(
-                "총 업무 로그: "
+                text.totalWorkLogsLabel
                         + statistics.getTotalWorkLogs()
-                        + "건",
+                        + text.countSuffix,
                 BODY_SIZE,
                 BODY_LINE_HEIGHT,
                 0f
         );
 
         writer.writeText(
-                "업무 기간: "
+                text.workPeriodLabel
                         + formatDate(
                                 statistics.getStartDate()
                         )
@@ -228,7 +273,7 @@ public class PdfReportService {
         );
 
         writer.writeText(
-                "평균 난이도: "
+                text.averageDifficultyLabel
                         + statistics.getAverageDifficulty()
                         + " / 3.0",
                 BODY_SIZE,
@@ -237,9 +282,10 @@ public class PdfReportService {
         );
 
         writer.writeText(
-                "난이도 분포: "
+                text.difficultyDistributionLabel
                         + formatMap(
-                                statistics.getDifficultyCounts()
+                                statistics.getDifficultyCounts(),
+                                language
                         ),
                 BODY_SIZE,
                 BODY_LINE_HEIGHT,
@@ -247,9 +293,10 @@ public class PdfReportService {
         );
 
         writer.writeWrappedText(
-                "주요 기술 태그: "
+                text.mainTechnologyTagsLabel
                         + formatMap(
-                                statistics.getTagCounts()
+                                statistics.getTagCounts(),
+                                language
                         ),
                 BODY_SIZE,
                 BODY_LINE_HEIGHT,
@@ -261,14 +308,15 @@ public class PdfReportService {
 
     private void writeImplementedFeatures(
             PdfWriter writer,
-            List<ImplementedFeature> implementedFeatures
+            List<ImplementedFeature> implementedFeatures,
+            PdfText text
     ) throws IOException {
 
         if (implementedFeatures == null
                 || implementedFeatures.isEmpty()) {
 
             writer.writeText(
-                    "정리된 구현 기능이 없습니다.",
+                    text.noImplementedFeatures,
                     BODY_SIZE,
                     BODY_LINE_HEIGHT,
                     0f
@@ -277,18 +325,12 @@ public class PdfReportService {
             return;
         }
 
-        for (
-                int index = 0;
-                index < implementedFeatures.size();
-                index++
-        ) {
+        for (int index = 0;
+             index < implementedFeatures.size();
+             index++) {
 
             ImplementedFeature feature =
                     implementedFeatures.get(index);
-
-            if (feature == null) {
-                continue;
-            }
 
             writer.writeSubTitle(
                     "2."
@@ -300,11 +342,8 @@ public class PdfReportService {
             );
 
             if (feature.getFeatures() != null) {
-
-                for (
-                        String value :
-                        feature.getFeatures()
-                ) {
+                for (String value :
+                        feature.getFeatures()) {
 
                     writer.writeWrappedText(
                             "• " + safeText(value),
@@ -330,14 +369,15 @@ public class PdfReportService {
 
     private void writeFutureImprovements(
             PdfWriter writer,
-            List<String> futureImprovements
+            List<String> futureImprovements,
+            PdfText text
     ) throws IOException {
 
         if (futureImprovements == null
                 || futureImprovements.isEmpty()) {
 
             writer.writeText(
-                    "정리된 향후 개선 사항이 없습니다.",
+                    text.noFutureImprovements,
                     BODY_SIZE,
                     BODY_LINE_HEIGHT,
                     0f
@@ -346,11 +386,9 @@ public class PdfReportService {
             return;
         }
 
-        for (
-                int index = 0;
-                index < futureImprovements.size();
-                index++
-        ) {
+        for (int index = 0;
+             index < futureImprovements.size();
+             index++) {
 
             writer.writeWrappedText(
                     (index + 1)
@@ -366,176 +404,192 @@ public class PdfReportService {
     }
 
     private PDType0Font loadFont(
-            PDDocument document
+            PDDocument document,
+            ReportLanguage language
     ) throws IOException {
 
-        List<String> candidates =
-                createFontCandidates();
+        String configuredPath =
+                language == ReportLanguage.JAPANESE
+                        ? japaneseFontPath
+                        : koreanFontPath;
 
-        List<String> checkedLocations =
-                new ArrayList<>();
+        String fallbackPath =
+                language == ReportLanguage.JAPANESE
+                        ? "classpath:fonts/ipaexg.ttf"
+                        : "classpath:fonts/NanumGothic.ttf";
 
-        for (String candidate : candidates) {
+        String fontPath =
+                configuredPath == null
+                        || configuredPath.isBlank()
+                        ? fallbackPath
+                        : configuredPath.trim();
 
-            if (candidate == null
-                    || candidate.isBlank()) {
+        Resource fontResource =
+                createFontResource(fontPath);
 
-                continue;
-            }
+        if (!fontResource.exists()
+                || !fontResource.isReadable()) {
 
-            String normalizedLocation =
-                    normalizeResourceLocation(
-                            candidate
+            throw new IllegalStateException(
+                    "PDF font not found or not readable. "
+                            + "language="
+                            + language.code
+                            + ", path="
+                            + fontPath
+            );
+        }
+
+        try (
+                InputStream inputStream =
+                        fontResource.getInputStream()
+        ) {
+            return PDType0Font.load(
+                    document,
+                    inputStream,
+                    true
+            );
+        }
+    }
+
+    private Resource createFontResource(
+            String fontPath
+    ) {
+
+        if (fontPath.startsWith(
+                "classpath:"
+        )) {
+
+            String classpathLocation =
+                    fontPath.substring(
+                            "classpath:".length()
                     );
 
-            checkedLocations.add(
-                    normalizedLocation
+            while (classpathLocation.startsWith(
+                    "/"
+            )) {
+                classpathLocation =
+                        classpathLocation.substring(1);
+            }
+
+            return new ClassPathResource(
+                    classpathLocation
             );
+        }
 
-            try {
-                Resource resource =
-                        resourceLoader.getResource(
-                                normalizedLocation
-                        );
+        return new FileSystemResource(
+                fontPath
+        );
+    }
 
-                if (!resource.exists()
-                        || !resource.isReadable()) {
+    private ReportLanguage detectReportLanguage(
+            AiReportResponse report
+    ) {
 
+        if (report == null) {
+            return ReportLanguage.KOREAN;
+        }
+
+        StringBuilder combinedText =
+                new StringBuilder();
+
+        appendText(
+                combinedText,
+                report.getWorkSummary()
+        );
+
+        appendText(
+                combinedText,
+                report.getDifficultyAnalysis()
+        );
+
+        appendText(
+                combinedText,
+                report.getProjectAchievements()
+        );
+
+        if (report.getFutureImprovements() != null) {
+            report.getFutureImprovements()
+                    .forEach(value ->
+                            appendText(
+                                    combinedText,
+                                    value
+                            )
+                    );
+        }
+
+        if (report.getImplementedFeatures() != null) {
+            for (ImplementedFeature feature :
+                    report.getImplementedFeatures()) {
+
+                if (feature == null) {
                     continue;
                 }
 
-                try (
-                        InputStream inputStream =
-                                resource.getInputStream()
-                ) {
+                appendText(
+                        combinedText,
+                        feature.getCategory()
+                );
 
-                    return PDType0Font.load(
-                            document,
-                            inputStream
-                    );
+                appendText(
+                        combinedText,
+                        feature.getDescription()
+                );
+
+                if (feature.getFeatures() != null) {
+                    feature.getFeatures()
+                            .forEach(value ->
+                                    appendText(
+                                            combinedText,
+                                            value
+                                    )
+                            );
                 }
-
-            } catch (Exception ignored) {
-                // 해당 폰트를 읽지 못하면
-                // 다음 후보 폰트를 확인합니다.
             }
         }
 
-        throw new IllegalStateException(
-                "PDF 한글 폰트를 찾을 수 없습니다. "
-                        + "확인한 위치: "
-                        + String.join(
-                                ", ",
-                                checkedLocations
-                        )
-                        + ". "
-                        + "src/main/resources/fonts/"
-                        + "NotoSansKR-Regular.ttf 파일을 "
-                        + "추가해 주세요."
-        );
-    }
+        String value =
+                combinedText.toString();
 
-    private List<String> createFontCandidates() {
+        for (int index = 0;
+             index < value.length();) {
 
-        List<String> candidates =
-                new ArrayList<>();
+            int codePoint =
+                    value.codePointAt(index);
 
-        if (configuredFontPath != null
-                && !configuredFontPath.isBlank()) {
+            if (isJapaneseKana(codePoint)) {
+                return ReportLanguage.JAPANESE;
+            }
 
-            candidates.add(
-                    configuredFontPath.trim()
+            index += Character.charCount(
+                    codePoint
             );
         }
 
-        /*
-         * 배포 환경에서 가장 먼저 사용할 폰트입니다.
-         *
-         * 실제 파일 위치:
-         * src/main/resources/fonts/
-         * NotoSansKR-Regular.ttf
-         */
-        candidates.add(
-                "classpath:fonts/"
-                        + "NotoSansKR-Regular.ttf"
-        );
-
-        /*
-         * 기존 로컬 Windows 환경에서도
-         * 폰트를 사용할 수 있도록 유지합니다.
-         */
-        candidates.add(
-                "C:/Windows/Fonts/malgun.ttf"
-        );
-
-        candidates.add(
-                "C:/Windows/Fonts/malgunbd.ttf"
-        );
-
-        /*
-         * 일부 Linux 배포 환경에서 사용할 수 있는
-         * 시스템 폰트 후보입니다.
-         */
-        candidates.add(
-                "/usr/share/fonts/truetype/noto/"
-                        + "NotoSansCJK-Regular.ttc"
-        );
-
-        candidates.add(
-                "/usr/share/fonts/opentype/noto/"
-                        + "NotoSansCJK-Regular.ttc"
-        );
-
-        candidates.add(
-                "/usr/share/fonts/truetype/nanum/"
-                        + "NanumGothic.ttf"
-        );
-
-        /*
-         * macOS 로컬 실행 후보입니다.
-         */
-        candidates.add(
-                "/System/Library/Fonts/"
-                        + "AppleSDGothicNeo.ttc"
-        );
-
-        return candidates;
+        return ReportLanguage.KOREAN;
     }
 
-    private String normalizeResourceLocation(
-            String location
+    private void appendText(
+            StringBuilder builder,
+            String value
     ) {
-
-        if (location == null
-                || location.isBlank()) {
-
-            return "";
+        if (value != null
+                && !value.isBlank()) {
+            builder.append(value)
+                    .append('\n');
         }
+    }
 
-        String trimmed =
-                location.trim();
-
-        if (trimmed.startsWith("classpath:")
-                || trimmed.startsWith("file:")) {
-
-            return trimmed;
-        }
-
-        try {
-            Path path =
-                    Path.of(trimmed);
-
-            if (path.isAbsolute()) {
-                return path.toUri()
-                        .toString();
-            }
-
-        } catch (Exception ignored) {
-            // Path로 변환할 수 없는 경우
-            // 일반 파일 경로로 처리합니다.
-        }
-
-        return "file:" + trimmed;
+    private boolean isJapaneseKana(
+            int codePoint
+    ) {
+        return (codePoint >= 0x3040
+                && codePoint <= 0x309F)
+                || (codePoint >= 0x30A0
+                && codePoint <= 0x30FF)
+                || (codePoint >= 0x31F0
+                && codePoint <= 0x31FF)
+                || (codePoint >= 0xFF66
+                && codePoint <= 0xFF9D);
     }
 
     private void validateReport(
@@ -569,7 +623,8 @@ public class PdfReportService {
     }
 
     private String formatMap(
-            Map<String, Long> values
+            Map<String, Long> values,
+            ReportLanguage language
     ) {
 
         if (values == null
@@ -578,21 +633,55 @@ public class PdfReportService {
             return "-";
         }
 
+        String countSuffix =
+                language == ReportLanguage.JAPANESE
+                        ? "件"
+                        : "건";
+
         return values.entrySet()
                 .stream()
                 .map(entry ->
-                        entry.getKey()
+                        localizeMapKey(
+                                entry.getKey(),
+                                language
+                        )
                                 + " "
                                 + entry.getValue()
-                                + "건"
+                                + countSuffix
                 )
                 .reduce(
                         (first, second) ->
-                                first
-                                        + ", "
-                                        + second
+                                first + ", " + second
                 )
                 .orElse("-");
+    }
+
+    private String localizeMapKey(
+            String key,
+            ReportLanguage language
+    ) {
+
+        String normalized =
+                safeText(key)
+                        .toLowerCase();
+
+        if (language == ReportLanguage.JAPANESE) {
+            return switch (normalized) {
+                case "초급", "初級", "beginner" -> "初級";
+                case "중급", "中級", "intermediate" -> "中級";
+                case "고급", "상급", "上級", "advanced" -> "上級";
+                case "미분류", "未分類", "unclassified" -> "未分類";
+                default -> safeText(key);
+            };
+        }
+
+        return switch (normalized) {
+            case "초급", "初級", "beginner" -> "초급";
+            case "중급", "中級", "intermediate" -> "중급";
+            case "고급", "상급", "上級", "advanced" -> "고급";
+            case "미분류", "未分類", "unclassified" -> "미분류";
+            default -> safeText(key);
+        };
     }
 
     private static String safeText(
@@ -606,15 +695,104 @@ public class PdfReportService {
         return value.trim();
     }
 
+    private enum ReportLanguage {
+        KOREAN("ko"),
+        JAPANESE("ja");
+
+        private final String code;
+
+        ReportLanguage(
+                String code
+        ) {
+            this.code = code;
+        }
+
+        private static ReportLanguage from(
+                String language
+        ) {
+            if ("ja".equalsIgnoreCase(language)) {
+                return JAPANESE;
+            }
+
+            return KOREAN;
+        }
+    }
+
+    private record PdfText(
+            String title,
+            String subtitle,
+            String overviewTitle,
+            String totalWorkLogsLabel,
+            String workPeriodLabel,
+            String averageDifficultyLabel,
+            String difficultyDistributionLabel,
+            String mainTechnologyTagsLabel,
+            String workSummaryTitle,
+            String implementedFeaturesTitle,
+            String difficultyAnalysisTitle,
+            String projectAchievementsTitle,
+            String futureImprovementsTitle,
+            String generatedDateLabel,
+            String countSuffix,
+            String noImplementedFeatures,
+            String noFutureImprovements
+    ) {
+
+        private static PdfText forLanguage(
+                ReportLanguage language
+        ) {
+
+            if (language == ReportLanguage.JAPANESE) {
+                return new PdfText(
+                        "AI 最終業務レポート",
+                        "全業務日誌に基づく総合分析",
+                        "レポート概要",
+                        "業務日誌の総数: ",
+                        "業務期間: ",
+                        "平均難易度: ",
+                        "難易度分布: ",
+                        "主要技術タグ: ",
+                        "1. これまでの業務要約",
+                        "2. 実装した機能",
+                        "3. 難易度の解説",
+                        "4. プロジェクト成果",
+                        "5. 今後の改善事項",
+                        "レポート生成日: ",
+                        "件",
+                        "整理された実装機能はありません。",
+                        "整理された改善事項はありません。"
+                );
+            }
+
+            return new PdfText(
+                    "AI 최종 업무 보고서",
+                    "전체 업무 로그 기반 종합 분석",
+                    "보고서 개요",
+                    "총 업무 로그: ",
+                    "업무 기간: ",
+                    "평균 난이도: ",
+                    "난이도 분포: ",
+                    "주요 기술 태그: ",
+                    "1. 지금까지 한 일들 요약",
+                    "2. 구현 기능들",
+                    "3. 난이도 해설",
+                    "4. 프로젝트 성과",
+                    "5. 향후 개선 사항",
+                    "보고서 생성일: ",
+                    "건",
+                    "정리된 구현 기능이 없습니다.",
+                    "정리된 향후 개선 사항이 없습니다."
+            );
+        }
+    }
+
     private static class PdfWriter {
 
         private final PDDocument document;
         private final PDType0Font font;
 
         private PDPage page;
-
         private PDPageContentStream contentStream;
-
         private float currentY;
 
         private PdfWriter(
@@ -633,10 +811,9 @@ public class PdfReportService {
 
             closeCurrentStream();
 
-            page =
-                    new PDPage(
-                            PDRectangle.A4
-                    );
+            page = new PDPage(
+                    PDRectangle.A4
+            );
 
             document.addPage(page);
 
@@ -662,8 +839,7 @@ public class PdfReportService {
             addSpacing(topSpacing);
 
             ensureSpace(
-                    fontSize
-                            + bottomSpacing
+                    fontSize + bottomSpacing
             );
 
             float textWidth =
@@ -690,8 +866,7 @@ public class PdfReportService {
             );
 
             currentY -=
-                    fontSize
-                            + bottomSpacing;
+                    fontSize + bottomSpacing;
         }
 
         private void writeSectionTitle(
@@ -740,7 +915,6 @@ public class PdfReportService {
                     safeText(paragraph);
 
             if (safeParagraph.isBlank()) {
-
                 writeText(
                         "-",
                         BODY_SIZE,
@@ -759,15 +933,11 @@ public class PdfReportService {
                     );
 
             for (String value : paragraphs) {
-
                 if (value.isBlank()) {
-
                     addSpacing(
                             BODY_LINE_HEIGHT / 2
                     );
-
                 } else {
-
                     writeWrappedText(
                             value.trim(),
                             BODY_SIZE,
@@ -795,7 +965,6 @@ public class PdfReportService {
                     );
 
             for (String line : lines) {
-
                 writeText(
                         line,
                         fontSize,
@@ -873,10 +1042,8 @@ public class PdfReportService {
                 float requiredHeight
         ) throws IOException {
 
-            if (
-                    currentY - requiredHeight
-                            < PAGE_MARGIN
-            ) {
+            if (currentY - requiredHeight
+                    < PAGE_MARGIN) {
 
                 createPage();
             }
@@ -928,10 +1095,8 @@ public class PdfReportService {
             StringBuilder currentLine =
                     new StringBuilder();
 
-            for (
-                    int index = 0;
-                    index < text.length();
-            ) {
+            for (int index = 0;
+                 index < text.length();) {
 
                 int codePoint =
                         text.codePointAt(index);
@@ -944,16 +1109,13 @@ public class PdfReportService {
                         );
 
                 String candidate =
-                        currentLine
-                                + character;
+                        currentLine + character;
 
-                if (
-                        !currentLine.isEmpty()
-                                && getTextWidth(
-                                        candidate,
-                                        fontSize
-                                ) > maxWidth
-                ) {
+                if (!currentLine.isEmpty()
+                        && getTextWidth(
+                                candidate,
+                                fontSize
+                        ) > maxWidth) {
 
                     lines.add(
                             currentLine
@@ -965,14 +1127,12 @@ public class PdfReportService {
                             new StringBuilder();
 
                     if (!character.isBlank()) {
-
                         currentLine.append(
                                 character
                         );
                     }
 
                 } else {
-
                     currentLine.append(
                             character
                     );
@@ -985,7 +1145,6 @@ public class PdfReportService {
             }
 
             if (!currentLine.isEmpty()) {
-
                 lines.add(
                         currentLine
                                 .toString()
@@ -1015,18 +1174,9 @@ public class PdfReportService {
             }
 
             return text
-                    .replace(
-                            "\t",
-                            "    "
-                    )
-                    .replace(
-                            "\r",
-                            ""
-                    )
-                    .replace(
-                            "\n",
-                            " "
-                    );
+                    .replace("\t", "    ")
+                    .replace("\r", "")
+                    .replace("\n", " ");
         }
 
         private void close()
@@ -1039,9 +1189,7 @@ public class PdfReportService {
                 throws IOException {
 
             if (contentStream != null) {
-
                 contentStream.close();
-
                 contentStream = null;
             }
         }
