@@ -129,8 +129,20 @@ public class WorkLogService {
                 loginUser
         );
 
-        AiAnalysisResponse ai =
-                analyzeWorkLog(request);
+AiAnalysisResponse ai;
+
+        try {
+            ai = analyzeWorkLog(request);
+        } catch (Exception e) {
+            e.printStackTrace();
+
+            ai = new AiAnalysisResponse();
+            ai.setSummary("");
+            ai.setTechTags(List.of());
+            ai.setQuestions(List.of());
+            ai.setDifficulty("Nothing");
+        }
+
 
         workLog.setTitle(
                 request.getTitle().trim()

@@ -137,7 +137,7 @@ public class OllamaService {
                 "model", model,
                 "prompt", prompt,
                 "stream", false,
-                "format", "json",
+//                "format", "json",            Only Local Can do it.
                 "options", Map.of(
                         "temperature", 0.1
                 )
