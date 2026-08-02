@@ -6,15 +6,15 @@ spring:
     name: worknote
 
   datasource:
-    url: ${DB_URL}
-    username: ${DB_USERNAME}
-    password: ${DB_PASSWORD}
+    url: ${DB_URL:jdbc:postgresql://localhost:55916/worknote}
+    username: ${DB_USERNAME:postgres}
+    password: ${DB_PASSWORD:1234}
     driver-class-name: org.postgresql.Driver
 
   jpa:
     hibernate:
-      ddl-auto: ${JPA_DDL_AUTO}
-    show-sql: ${JPA_SHOW_SQL}
+      ddl-auto: ${JPA_DDL_AUTO:update}
+    show-sql: ${JPA_SHOW_SQL:true}
     open-in-view: false
 
     properties:
@@ -34,8 +34,8 @@ jwt:
 ollama:
   base-url: ${OLLAMA_BASE_URL:http://localhost:11434}
   model: ${OLLAMA_MODEL:qwen2.5:3b}
-  api-key: ${OLLAMA_API_KEY}
-  timeout-seconds: ${OLLAMA_TIMEOUT_SECONDS}
+  api-key: ${OLLAMA_API_KEY:}
+  timeout-seconds: ${OLLAMA_TIMEOUT_SECONDS:180}
 
 app:
   cors:
@@ -44,3 +44,16 @@ app:
 report:
   pdf:
     font-path: ${REPORT_PDF_FONT_PATH:classpath:fonts/NanumGothic.ttf}
+springdoc:
+  api-docs:
+    enabled: ${SWAGGER_ENABLED:true}
+    path: /v3/api-docs
+  swagger-ui:
+    enabled: ${SWAGGER_ENABLED:true}
+    path: /swagger-ui.html
+    operations-sorter: method
+    tags-sorter: alpha
+    doc-expansion: list
+    display-request-duration: true
+    persist-authorization: true
+    filter: true

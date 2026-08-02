@@ -7,33 +7,45 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.example.demo.ai.dto.AiAnalysisResponse;
 import com.example.demo.ai.service.OllamaService;
+import com.example.demo.config.OpenApiConfig;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 
 @RestController
 @RequiredArgsConstructor
+@Tag(name = "AI", description = "Ollama AI 연결 및 분석 테스트 API")
+@SecurityRequirement(name = OpenApiConfig.SECURITY_SCHEME_NAME)
 public class AiController {
 
     private final OllamaService ollamaService;
 
-    /**
-     * Ollama 연결 테스트 API
-     *
-     * 한국어 테스트:
-     * GET /api/ai/test
-     *
-     * 일본어 테스트:
-     * GET /api/ai/test?language=ja
-     */
     @GetMapping("/api/ai/test")
+    @Operation(
+            summary = "AI 분석 연결 테스트",
+            description = "샘플 업무 내용을 Ollama에 전달해 AI 요약, 기술 태그, 난이도, 면접 질문을 생성합니다."
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "AI 분석 성공"),
+            @ApiResponse(responseCode = "401", description = "인증 실패"),
+            @ApiResponse(responseCode = "500", description = "Ollama 연결 또는 분석 실패")
+    })
     public ResponseEntity<AiAnalysisResponse> test(
+            @Parameter(
+                    description = "분석 결과 언어",
+                    example = "ko"
+            )
             @RequestParam(
                     name = "language",
                     defaultValue = "ko"
             )
             String language
     ) {
-
         String sample = """
                 제목:
                 Spring Boot와 React 연동 작업
