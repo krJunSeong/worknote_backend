@@ -13,6 +13,7 @@ import org.springframework.web.reactive.function.client.WebClientResponseExcepti
 
 import com.example.demo.ai.dto.AiAnalysisResponse;
 import com.example.demo.report.dto.AiReportResponse;
+import com.example.demo.work.response.WorkLogDraftResponse;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 @Service
@@ -128,6 +129,30 @@ public class OllamaService {
         );
     }
 
+    public WorkLogDraftResponse generateWorkLogDraft(
+            String recognizedText,
+            String language
+    ) {
+
+        if (recognizedText == null
+                || recognizedText.isBlank()) {
+
+            throw new IllegalArgumentException(
+                    "업무일지 초안으로 변환할 OCR 텍스트가 없습니다."
+            );
+        }
+
+        String prompt = createWorkLogDraftPrompt(
+                recognizedText,
+                language
+        );
+
+        return executeJsonRequest(
+                prompt,
+                WorkLogDraftResponse.class
+        );
+    }
+
     private <T> T executeJsonRequest(
             String prompt,
             Class<T> responseType
@@ -196,7 +221,9 @@ public class OllamaService {
 
         try {
             return objectMapper.readValue(
-                    responseValue.toString(),
+                    extractJsonObject(
+                            responseValue.toString()
+                    ),
                     responseType
             );
 
@@ -233,6 +260,22 @@ public class OllamaService {
 
         return createKoreanReportPrompt(
                 reportData
+        );
+    }
+
+    private String createWorkLogDraftPrompt(
+            String recognizedText,
+            String language
+    ) {
+
+        if ("ja".equalsIgnoreCase(language)) {
+            return createJapaneseWorkLogDraftPrompt(
+                    recognizedText
+            );
+        }
+
+        return createKoreanWorkLogDraftPrompt(
+                recognizedText
         );
     }
 
@@ -322,6 +365,76 @@ public class OllamaService {
 
                 %s
                 """.formatted(workLog);
+    }
+
+    private String createKoreanWorkLogDraftPrompt(
+            String recognizedText
+    ) {
+
+        return """
+                당신은 개발자가 업무 중 손으로 작성한 메모를
+                업무일지 초안으로 정리하는 AI입니다.
+
+                아래 입력은 이미지 OCR로 추출된 텍스트이므로
+                오탈자, 줄바꿈 오류, 짧은 키워드가 포함될 수 있습니다.
+
+                반드시 다음 규칙을 지켜주세요.
+
+                1. OCR 텍스트에 존재하는 사실만 사용합니다.
+                2. 기록에 없는 기능, 성과, 원인, 해결 결과를 임의로 만들지 않습니다.
+                3. 의미가 불명확한 단어는 과도하게 추측하지 않습니다.
+                4. 기술명, 코드, 명령어, 에러 메시지는 가능한 한 원문을 유지합니다.
+                5. 메모의 순서와 맥락을 바탕으로 자연스러운 한국어 업무일지 초안으로 정리합니다.
+                6. title은 핵심 업무를 나타내는 간결한 제목으로 작성합니다.
+                7. content는 사용자가 다시 확인하고 수정할 수 있는 초안으로 작성합니다.
+                8. 반드시 아래 JSON 형식으로만 응답합니다.
+                9. JSON 바깥에 설명, Markdown, 코드 블록을 작성하지 않습니다.
+                10. recognizedText 필드는 응답에 포함하지 않습니다.
+
+                {
+                  "title": "업무일지 제목",
+                  "content": "OCR 메모를 바탕으로 정리한 업무 내용"
+                }
+
+                OCR로 인식된 메모:
+
+                %s
+                """.formatted(recognizedText);
+    }
+
+    private String createJapaneseWorkLogDraftPrompt(
+            String recognizedText
+    ) {
+
+        return """
+                あなたは、開発者が業務中に手書きしたメモを
+                業務日誌の下書きとして整理するAIです。
+
+                以下の入力は画像OCRで抽出されたテキストのため、
+                誤認識、改行の乱れ、短いキーワードが含まれる場合があります。
+
+                必ず以下のルールを守ってください。
+
+                1. OCRテキストに存在する事実だけを使用してください。
+                2. 記録にない機能、成果、原因、解決結果を作らないでください。
+                3. 意味が不明な単語を過度に推測しないでください。
+                4. 技術名、コード、コマンド、エラーメッセージは可能な限り原文を維持してください。
+                5. メモの順序と文脈をもとに自然な日本語の業務日誌下書きへ整理してください。
+                6. titleは主要な業務が分かる簡潔なタイトルにしてください。
+                7. contentはユーザーが確認・修正できる下書きとして作成してください。
+                8. 必ず以下のJSON形式のみで回答してください。
+                9. JSONの外側に説明、Markdown、コードブロックを追加しないでください。
+                10. recognizedTextフィールドは応答に含めないでください。
+
+                {
+                  "title": "業務日誌のタイトル",
+                  "content": "OCRメモをもとに整理した業務内容"
+                }
+
+                OCRで認識したメモ:
+
+                %s
+                """.formatted(recognizedText);
     }
 
     private String createKoreanReportPrompt(
@@ -455,6 +568,44 @@ public class OllamaService {
         }
 
         return "미분류";
+    }
+
+    private static String extractJsonObject(
+            String value
+    ) {
+
+        if (value == null) {
+            return "";
+        }
+
+        String normalized = value.trim();
+
+        if (normalized.startsWith("```")) {
+            int firstLineBreak = normalized.indexOf('\n');
+            if (firstLineBreak >= 0) {
+                normalized = normalized.substring(
+                        firstLineBreak + 1
+                ).trim();
+            }
+            if (normalized.endsWith("```")) {
+                normalized = normalized.substring(
+                        0,
+                        normalized.length() - 3
+                ).trim();
+            }
+        }
+
+        int firstBrace = normalized.indexOf('{');
+        int lastBrace = normalized.lastIndexOf('}');
+
+        if (firstBrace >= 0 && lastBrace > firstBrace) {
+            return normalized.substring(
+                    firstBrace,
+                    lastBrace + 1
+            );
+        }
+
+        return normalized;
     }
 
     private static String removeTrailingSlash(

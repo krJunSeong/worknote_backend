@@ -1,10 +1,14 @@
 package com.example.demo.worknote.service;
 
+import com.example.demo.user.entity.User;
+import com.example.demo.user.repository.UserRepository;
 import com.example.demo.work.entity.WorkLog;
 import com.example.demo.work.repository.WorkLogRepository;
 import com.example.demo.worknote.dto.WorkLogDashboardResponse;
 
-import lombok.RequiredArgsConstructor;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -18,16 +22,38 @@ import java.util.Map;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
+import lombok.RequiredArgsConstructor;
+
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
 public class DashboardService {
 
     private final WorkLogRepository workLogRepository;
+    private final UserRepository userRepository;
 
-    public WorkLogDashboardResponse getDashboard(Long userId) {
+    public WorkLogDashboardResponse getDashboard() {
+        return buildDashboard(getLoginUser());
+    }
+
+    public WorkLogDashboardResponse getDashboardForUser(Long requestedUserId) {
+        User loginUser = getLoginUser();
+
+        if (requestedUserId == null
+                || !loginUser.getId().equals(requestedUserId)) {
+            throw new AccessDeniedException(
+                    "다른 사용자의 대시보드에는 접근할 수 없습니다."
+            );
+        }
+
+        return buildDashboard(loginUser);
+    }
+
+    private WorkLogDashboardResponse buildDashboard(User loginUser) {
         List<WorkLog> workLogs =
-                workLogRepository.findByUserIdOrderByCreatedAtDesc(userId);
+                workLogRepository.findByUserIdOrderByCreatedAtDesc(
+                        loginUser.getId()
+                );
 
         Map<String, Long> difficultyCounts =
                 createDifficultyCounts(workLogs);
@@ -48,6 +74,24 @@ public class DashboardService {
                 .recentDailyCounts(recentDailyCounts)
                 .recentWorkLogs(recentWorkLogs)
                 .build();
+    }
+
+    private User getLoginUser() {
+        Authentication authentication = SecurityContextHolder
+                .getContext()
+                .getAuthentication();
+
+        if (authentication == null
+                || !authentication.isAuthenticated()
+                || authentication.getName() == null
+                || authentication.getName().isBlank()) {
+            throw new AccessDeniedException("로그인이 필요합니다.");
+        }
+
+        return userRepository.findByLoginId(authentication.getName())
+                .orElseThrow(() -> new AccessDeniedException(
+                        "로그인 사용자를 찾을 수 없습니다."
+                ));
     }
 
     private Map<String, Long> createDifficultyCounts(

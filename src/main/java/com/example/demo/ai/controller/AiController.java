@@ -8,6 +8,7 @@ import org.springframework.web.bind.annotation.RestController;
 import com.example.demo.ai.dto.AiAnalysisResponse;
 import com.example.demo.ai.service.OllamaService;
 import com.example.demo.config.OpenApiConfig;
+import com.example.demo.usage.service.DailyUsageLimitService;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -15,6 +16,7 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
+
 import lombok.RequiredArgsConstructor;
 
 @RestController
@@ -24,6 +26,7 @@ import lombok.RequiredArgsConstructor;
 public class AiController {
 
     private final OllamaService ollamaService;
+    private final DailyUsageLimitService dailyUsageLimitService;
 
     @GetMapping("/api/ai/test")
     @Operation(
@@ -33,6 +36,7 @@ public class AiController {
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "AI 분석 성공"),
             @ApiResponse(responseCode = "401", description = "인증 실패"),
+            @ApiResponse(responseCode = "429", description = "일일 AI 사용량 초과"),
             @ApiResponse(responseCode = "500", description = "Ollama 연결 또는 분석 실패")
     })
     public ResponseEntity<AiAnalysisResponse> test(
@@ -56,6 +60,8 @@ public class AiController {
                 Docker PostgreSQL 데이터베이스를 연결했습니다.
                 이후 Ollama를 이용한 AI 분석 기능 연동을 시작했습니다.
                 """;
+
+        dailyUsageLimitService.consumeAi();
 
         AiAnalysisResponse response =
                 ollamaService.analyze(

@@ -18,6 +18,13 @@ import lombok.RequiredArgsConstructor;
 @Transactional(readOnly = true)
 public class AuthService {
 
+    private static final int LOGIN_ID_MIN_LENGTH = 4;
+    private static final int LOGIN_ID_MAX_LENGTH = 20;
+    private static final int PASSWORD_MIN_LENGTH = 5;
+    private static final int PASSWORD_MAX_LENGTH = 12;
+    private static final int NICKNAME_MIN_LENGTH = 2;
+    private static final int NICKNAME_MAX_LENGTH = 12;
+
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtTokenProvider jwtTokenProvider;
@@ -124,6 +131,27 @@ public class AuthService {
                     "닉네임을 입력해 주세요."
             );
         }
+
+        validateLength(
+                request.getLoginId().trim(),
+                LOGIN_ID_MIN_LENGTH,
+                LOGIN_ID_MAX_LENGTH,
+                "아이디는 4자 이상 20자 이하로 입력해 주세요."
+        );
+
+        validateLength(
+                request.getPassword(),
+                PASSWORD_MIN_LENGTH,
+                PASSWORD_MAX_LENGTH,
+                "비밀번호는 5자 이상 12자 이하로 입력해 주세요."
+        );
+
+        validateLength(
+                request.getNickname().trim(),
+                NICKNAME_MIN_LENGTH,
+                NICKNAME_MAX_LENGTH,
+                "닉네임은 2자 이상 12자 이하로 입력해 주세요."
+        );
     }
 
     private void validateLoginRequest(
@@ -150,6 +178,33 @@ public class AuthService {
             throw new IllegalArgumentException(
                     "비밀번호를 입력해 주세요."
             );
+        }
+
+        validateLength(
+                request.getLoginId().trim(),
+                LOGIN_ID_MIN_LENGTH,
+                LOGIN_ID_MAX_LENGTH,
+                "아이디는 4자 이상 20자 이하로 입력해 주세요."
+        );
+
+        validateLength(
+                request.getPassword(),
+                PASSWORD_MIN_LENGTH,
+                PASSWORD_MAX_LENGTH,
+                "비밀번호는 5자 이상 12자 이하로 입력해 주세요."
+        );
+    }
+
+    private void validateLength(
+            String value,
+            int minLength,
+            int maxLength,
+            String message
+    ) {
+        int length = value.length();
+
+        if (length < minLength || length > maxLength) {
+            throw new IllegalArgumentException(message);
         }
     }
 }

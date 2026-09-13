@@ -18,6 +18,7 @@ import com.example.demo.ai.service.OllamaService;
 import com.example.demo.report.dto.AiReportResponse;
 import com.example.demo.report.dto.ImplementedFeature;
 import com.example.demo.report.dto.ReportStatistics;
+import com.example.demo.usage.service.DailyUsageLimitService;
 import com.example.demo.user.entity.User;
 import com.example.demo.user.repository.UserRepository;
 import com.example.demo.work.entity.WorkLog;
@@ -38,6 +39,7 @@ public class AiReportService {
     private final WorkLogRepository workLogRepository;
     private final UserRepository userRepository;
     private final OllamaService ollamaService;
+    private final DailyUsageLimitService dailyUsageLimitService;
 
     public AiReportResponse generateReport(
             String language
@@ -67,6 +69,8 @@ public class AiReportService {
                         statistics,
                         normalizeLanguage(language)
                 );
+
+        dailyUsageLimitService.consumeAi();
 
         AiReportResponse report =
                 ollamaService.generateReport(

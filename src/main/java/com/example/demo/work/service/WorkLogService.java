@@ -2,6 +2,7 @@ package com.example.demo.work.service;
 
 import java.util.List;
 
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
@@ -9,6 +10,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.example.demo.ai.dto.AiAnalysisResponse;
 import com.example.demo.ai.service.OllamaService;
+import com.example.demo.usage.service.DailyUsageLimitService;
 import com.example.demo.user.entity.User;
 import com.example.demo.user.repository.UserRepository;
 import com.example.demo.work.dto.WorkLogRequest;
@@ -23,9 +25,13 @@ import lombok.RequiredArgsConstructor;
 @Transactional(readOnly = true)
 public class WorkLogService {
 
+    private static final int TITLE_MAX_LENGTH = 200;
+    private static final int CONTENT_MAX_LENGTH = 20_000;
+
     private final WorkLogRepository workLogRepository;
     private final UserRepository userRepository;
     private final OllamaService ollamaService;
+    private final DailyUsageLimitService dailyUsageLimitService;
 
     @Transactional
     public void save(WorkLogRequest request) {
@@ -38,6 +44,8 @@ public class WorkLogService {
                 loginUser,
                 request.getUserId()
         );
+
+        dailyUsageLimitService.consumeAi();
 
         AiAnalysisResponse ai =
                 analyzeWorkLog(request);
@@ -75,9 +83,9 @@ public class WorkLogService {
             Long userId
     ) {
 
-        if (userId == null) {
+        if (userId == null || userId <= 0) {
             throw new IllegalArgumentException(
-                    "사용자 ID가 필요합니다."
+                    "올바른 사용자 ID가 필요합니다."
             );
         }
 
@@ -101,9 +109,9 @@ public class WorkLogService {
             WorkLogRequest request
     ) {
 
-        if (id == null) {
+        if (id == null || id <= 0) {
             throw new IllegalArgumentException(
-                    "업무일지 ID가 필요합니다."
+                    "올바른 업무일지 ID가 필요합니다."
             );
         }
 
@@ -129,7 +137,9 @@ public class WorkLogService {
                 loginUser
         );
 
-AiAnalysisResponse ai;
+        dailyUsageLimitService.consumeAi();
+
+        AiAnalysisResponse ai;
 
         try {
             ai = analyzeWorkLog(request);
@@ -180,9 +190,9 @@ AiAnalysisResponse ai;
     @Transactional
     public void delete(Long id) {
 
-        if (id == null) {
+        if (id == null || id <= 0) {
             throw new IllegalArgumentException(
-                    "업무일지 ID가 필요합니다."
+                    "올바른 업무일지 ID가 필요합니다."
             );
         }
 
@@ -240,7 +250,7 @@ AiAnalysisResponse ai;
                 || !loginUser.getId()
                         .equals(requestedUserId)) {
 
-            throw new RuntimeException(
+            throw new AccessDeniedException(
                     "접근 권한이 없습니다."
             );
         }
@@ -257,7 +267,7 @@ AiAnalysisResponse ai;
                         .getId()
                         .equals(loginUser.getId())) {
 
-            throw new RuntimeException(
+            throw new AccessDeniedException(
                     "업무일지에 접근할 권한이 없습니다."
             );
         }
@@ -315,6 +325,27 @@ AiAnalysisResponse ai;
 
             throw new IllegalArgumentException(
                     "업무 내용을 입력해 주세요."
+            );
+        }
+
+        if (request.getUserId() <= 0) {
+            throw new IllegalArgumentException(
+                    "올바른 사용자 ID가 필요합니다."
+            );
+        }
+
+        String title = request.getTitle().trim();
+        String content = request.getContent().trim();
+
+        if (title.length() > TITLE_MAX_LENGTH) {
+            throw new IllegalArgumentException(
+                    "제목은 200자 이하로 입력해 주세요."
+            );
+        }
+
+        if (content.length() > CONTENT_MAX_LENGTH) {
+            throw new IllegalArgumentException(
+                    "업무 내용은 20000자 이하로 입력해 주세요."
             );
         }
     }

@@ -1,5 +1,6 @@
 package com.example.demo.work.repository;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -20,4 +21,10 @@ public interface WorkLogRepository
     List<WorkLog> findByUserIdOrderByCreatedAtAsc(
             Long userId
     );
+    List<WorkLog> findByUserIdAndCreatedAtGreaterThanEqualAndCreatedAtLessThanOrderByCreatedAtAsc(
+            Long userId,
+            LocalDateTime startDateTime,
+            LocalDateTime endDateTime
+    );
+
 }

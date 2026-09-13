@@ -40,6 +40,12 @@ public class PdfReportService {
     private static final float BODY_LINE_HEIGHT = 17f;
     private static final float SMALL_LINE_HEIGHT = 14f;
 
+    private static final int MAX_REPORT_TEXT_LENGTH = 20_000;
+    private static final int MAX_FEATURE_GROUPS = 50;
+    private static final int MAX_FEATURE_ITEMS_PER_GROUP = 100;
+    private static final int MAX_FUTURE_IMPROVEMENTS = 100;
+    private static final int MAX_SHORT_TEXT_LENGTH = 2_000;
+
     private static final DateTimeFormatter DATE_FORMATTER =
             DateTimeFormatter.ofPattern(
                     "yyyy.MM.dd"
@@ -605,6 +611,99 @@ public class PdfReportService {
         if (report.getStatistics() == null) {
             throw new IllegalArgumentException(
                     "보고서 통계 데이터가 없습니다."
+            );
+        }
+
+        validateTextLength(
+                report.getWorkSummary(),
+                MAX_REPORT_TEXT_LENGTH,
+                "업무 요약"
+        );
+        validateTextLength(
+                report.getDifficultyAnalysis(),
+                MAX_REPORT_TEXT_LENGTH,
+                "난이도 분석"
+        );
+        validateTextLength(
+                report.getProjectAchievements(),
+                MAX_REPORT_TEXT_LENGTH,
+                "프로젝트 성과"
+        );
+
+        List<ImplementedFeature> implementedFeatures =
+                report.getImplementedFeatures();
+
+        if (implementedFeatures != null) {
+            if (implementedFeatures.size() > MAX_FEATURE_GROUPS) {
+                throw new IllegalArgumentException(
+                        "구현 기능 그룹이 너무 많습니다."
+                );
+            }
+
+            for (ImplementedFeature feature : implementedFeatures) {
+                if (feature == null) {
+                    continue;
+                }
+
+                validateTextLength(
+                        feature.getCategory(),
+                        MAX_SHORT_TEXT_LENGTH,
+                        "기능 카테고리"
+                );
+                validateTextLength(
+                        feature.getDescription(),
+                        MAX_REPORT_TEXT_LENGTH,
+                        "기능 설명"
+                );
+
+                List<String> features = feature.getFeatures();
+                if (features != null) {
+                    if (features.size() > MAX_FEATURE_ITEMS_PER_GROUP) {
+                        throw new IllegalArgumentException(
+                                "기능 항목이 너무 많습니다."
+                        );
+                    }
+
+                    for (String value : features) {
+                        validateTextLength(
+                                value,
+                                MAX_SHORT_TEXT_LENGTH,
+                                "기능 항목"
+                        );
+                    }
+                }
+            }
+        }
+
+        List<String> futureImprovements =
+                report.getFutureImprovements();
+
+        if (futureImprovements != null) {
+            if (futureImprovements.size() > MAX_FUTURE_IMPROVEMENTS) {
+                throw new IllegalArgumentException(
+                        "향후 개선 항목이 너무 많습니다."
+                );
+            }
+
+            for (String value : futureImprovements) {
+                validateTextLength(
+                        value,
+                        MAX_SHORT_TEXT_LENGTH,
+                        "향후 개선 항목"
+                );
+            }
+        }
+    }
+
+    private void validateTextLength(
+            String value,
+            int maxLength,
+            String fieldName
+    ) {
+        if (value != null && value.length() > maxLength) {
+            throw new IllegalArgumentException(
+                    fieldName + "은(는) " + maxLength
+                            + "자 이하로 입력해 주세요."
             );
         }
     }
