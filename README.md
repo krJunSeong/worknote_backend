@@ -4,6 +4,10 @@
 
 [한국어 README](./README-ko.md)
 
+[Site](https://worknote-ai.vercel.app/)
+
+[Youtube](https://www.youtube.com/watch?v=eNSDhhIoi3c)
+
 ## 概要
 
 WorkNote Backend は Spring Boot を中心に構築した REST API サーバーです。
