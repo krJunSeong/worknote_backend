@@ -1,5 +1,6 @@
 package com.example.demo.work.response;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 import lombok.AllArgsConstructor;
@@ -30,4 +31,6 @@ public class WorkLogResponse {
     private String difficulty;
 
     private LocalDateTime createdAt;
+
+    private LocalDate workDate;
 }

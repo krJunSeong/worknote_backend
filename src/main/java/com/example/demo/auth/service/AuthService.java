@@ -1,5 +1,7 @@
 package com.example.demo.auth.service;
 
+import java.util.regex.Pattern;
+
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -20,10 +22,12 @@ public class AuthService {
 
     private static final int LOGIN_ID_MIN_LENGTH = 4;
     private static final int LOGIN_ID_MAX_LENGTH = 20;
-    private static final int PASSWORD_MIN_LENGTH = 5;
-    private static final int PASSWORD_MAX_LENGTH = 12;
+    private static final int SIGNUP_PASSWORD_MIN_LENGTH = 8;
+    private static final int PASSWORD_MAX_LENGTH = 64;
     private static final int NICKNAME_MIN_LENGTH = 2;
     private static final int NICKNAME_MAX_LENGTH = 12;
+    private static final Pattern LOGIN_ID_PATTERN = Pattern.compile("^[A-Za-z0-9_]+$");
+    private static final Pattern NICKNAME_PATTERN = Pattern.compile("^[\\p{L}\\p{N}_ ]+$");
 
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
@@ -138,12 +142,17 @@ public class AuthService {
                 LOGIN_ID_MAX_LENGTH,
                 "아이디는 4자 이상 20자 이하로 입력해 주세요."
         );
+        validatePattern(
+                request.getLoginId().trim(),
+                LOGIN_ID_PATTERN,
+                "아이디에는 영문, 숫자, 밑줄(_)만 사용할 수 있습니다."
+        );
 
         validateLength(
                 request.getPassword(),
-                PASSWORD_MIN_LENGTH,
+                SIGNUP_PASSWORD_MIN_LENGTH,
                 PASSWORD_MAX_LENGTH,
-                "비밀번호는 5자 이상 12자 이하로 입력해 주세요."
+                "비밀번호는 8자 이상 64자 이하로 입력해 주세요."
         );
 
         validateLength(
@@ -151,6 +160,11 @@ public class AuthService {
                 NICKNAME_MIN_LENGTH,
                 NICKNAME_MAX_LENGTH,
                 "닉네임은 2자 이상 12자 이하로 입력해 주세요."
+        );
+        validatePattern(
+                request.getNickname().trim(),
+                NICKNAME_PATTERN,
+                "닉네임에는 문자, 숫자, 공백, 밑줄(_)만 사용할 수 있습니다."
         );
     }
 
@@ -186,13 +200,15 @@ public class AuthService {
                 LOGIN_ID_MAX_LENGTH,
                 "아이디는 4자 이상 20자 이하로 입력해 주세요."
         );
-
-        validateLength(
-                request.getPassword(),
-                PASSWORD_MIN_LENGTH,
-                PASSWORD_MAX_LENGTH,
-                "비밀번호는 5자 이상 12자 이하로 입력해 주세요."
+        validatePattern(
+                request.getLoginId().trim(),
+                LOGIN_ID_PATTERN,
+                "아이디에는 영문, 숫자, 밑줄(_)만 사용할 수 있습니다."
         );
+
+        if (request.getPassword().length() > PASSWORD_MAX_LENGTH) {
+            throw new IllegalArgumentException("비밀번호는 64자를 초과할 수 없습니다.");
+        }
     }
 
     private void validateLength(
@@ -204,6 +220,12 @@ public class AuthService {
         int length = value.length();
 
         if (length < minLength || length > maxLength) {
+            throw new IllegalArgumentException(message);
+        }
+    }
+
+    private void validatePattern(String value, Pattern pattern, String message) {
+        if (!pattern.matcher(value).matches()) {
             throw new IllegalArgumentException(message);
         }
     }

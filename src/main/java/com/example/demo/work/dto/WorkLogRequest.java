@@ -1,5 +1,7 @@
 package com.example.demo.work.dto;
 
+import java.time.LocalDate;
+
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -18,4 +20,6 @@ public class WorkLogRequest {
     private String content;
 
     private String language;
+
+    private LocalDate workDate;
 }

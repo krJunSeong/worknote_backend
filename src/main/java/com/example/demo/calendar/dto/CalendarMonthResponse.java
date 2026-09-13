@@ -27,30 +27,43 @@ public class CalendarMonthResponse {
     public static class WorkLogItem {
         private final Long id;
         private final String title;
+        private final LocalDate workDate;
         private final LocalDateTime createdAt;
 
-        public WorkLogItem(Long id, String title, LocalDateTime createdAt) {
+        public WorkLogItem(Long id, String title, LocalDate workDate, LocalDateTime createdAt) {
             this.id = id;
             this.title = title;
+            this.workDate = workDate;
             this.createdAt = createdAt;
         }
 
         public Long getId() { return id; }
         public String getTitle() { return title; }
+        public LocalDate getWorkDate() { return workDate; }
         public LocalDateTime getCreatedAt() { return createdAt; }
     }
 
     public static class GoalItem {
         private final Long id;
         private final String title;
+        private final LocalDate startDate;
         private final LocalDate targetDate;
         private final GoalStatus status;
         private final Integer progress;
         private final boolean overdue;
 
-        public GoalItem(Long id, String title, LocalDate targetDate, GoalStatus status, Integer progress, boolean overdue) {
+        public GoalItem(
+                Long id,
+                String title,
+                LocalDate startDate,
+                LocalDate targetDate,
+                GoalStatus status,
+                Integer progress,
+                boolean overdue
+        ) {
             this.id = id;
             this.title = title;
+            this.startDate = startDate;
             this.targetDate = targetDate;
             this.status = status;
             this.progress = progress;
@@ -59,6 +72,7 @@ public class CalendarMonthResponse {
 
         public Long getId() { return id; }
         public String getTitle() { return title; }
+        public LocalDate getStartDate() { return startDate; }
         public LocalDate getTargetDate() { return targetDate; }
         public GoalStatus getStatus() { return status; }
         public Integer getProgress() { return progress; }

@@ -5,6 +5,7 @@ import java.util.List;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -12,8 +13,10 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.example.demo.goal.dto.GoalProgressRequest;
 import com.example.demo.goal.dto.GoalRequest;
 import com.example.demo.goal.dto.GoalResponse;
+import com.example.demo.goal.dto.GoalScheduleRequest;
 import com.example.demo.goal.service.GoalService;
 
 @RestController
@@ -37,8 +40,27 @@ public class GoalController {
     }
 
     @PutMapping("/{id}")
-    public ResponseEntity<GoalResponse> update(@PathVariable("id") Long id, @RequestBody GoalRequest request) {
+    public ResponseEntity<GoalResponse> update(
+            @PathVariable("id") Long id,
+            @RequestBody GoalRequest request
+    ) {
         return ResponseEntity.ok(goalService.update(id, request));
+    }
+
+    @PatchMapping("/{id}/schedule")
+    public ResponseEntity<GoalResponse> updateSchedule(
+            @PathVariable("id") Long id,
+            @RequestBody GoalScheduleRequest request
+    ) {
+        return ResponseEntity.ok(goalService.updateSchedule(id, request));
+    }
+
+    @PatchMapping("/{id}/progress")
+    public ResponseEntity<GoalResponse> updateProgress(
+            @PathVariable("id") Long id,
+            @RequestBody GoalProgressRequest request
+    ) {
+        return ResponseEntity.ok(goalService.updateProgress(id, request));
     }
 
     @DeleteMapping("/{id}")

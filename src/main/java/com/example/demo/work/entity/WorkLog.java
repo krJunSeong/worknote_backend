@@ -1,5 +1,6 @@
 package com.example.demo.work.entity;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 import com.example.demo.user.entity.User;
@@ -33,6 +34,7 @@ public class WorkLog {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @Column(length = 200)
     private String title;
 
     @Column(columnDefinition = "TEXT")
@@ -50,8 +52,17 @@ public class WorkLog {
     @Column(name = "difficulty", length = 20)
     private String difficulty;
 
-    @Column(name = "created_at")
+    @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
+
+    /**
+     * The business date shown on the calendar. It is intentionally separated
+     * from createdAt so drag-and-drop scheduling never rewrites the original
+     * creation timestamp. Existing rows may be null and are treated as the
+     * date portion of createdAt by service/repository code.
+     */
+    @Column(name = "work_date")
+    private LocalDate workDate;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id")
@@ -59,6 +70,11 @@ public class WorkLog {
 
     @PrePersist
     public void prePersist() {
-        this.createdAt = LocalDateTime.now();
+        if (this.createdAt == null) {
+            this.createdAt = LocalDateTime.now();
+        }
+        if (this.workDate == null) {
+            this.workDate = this.createdAt.toLocalDate();
+        }
     }
 }

@@ -6,6 +6,7 @@ import com.example.demo.goal.model.GoalStatus;
 public class GoalRequest {
     private String title;
     private String description;
+    private LocalDate startDate;
     private LocalDate targetDate;
     private GoalStatus status;
     private Integer progress;
@@ -17,6 +18,8 @@ public class GoalRequest {
     public void setTitle(String title) { this.title = title; }
     public String getDescription() { return description; }
     public void setDescription(String description) { this.description = description; }
+    public LocalDate getStartDate() { return startDate; }
+    public void setStartDate(LocalDate startDate) { this.startDate = startDate; }
     public LocalDate getTargetDate() { return targetDate; }
     public void setTargetDate(LocalDate targetDate) { this.targetDate = targetDate; }
     public GoalStatus getStatus() { return status; }

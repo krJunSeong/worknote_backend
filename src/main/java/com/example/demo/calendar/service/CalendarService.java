@@ -48,17 +48,20 @@ public class CalendarService {
         LocalDateTime endDateTime = lastDate.plusDays(1).atStartOfDay();
 
         List<CalendarMonthResponse.WorkLogItem> workLogs = workLogRepository
-                .findByUserIdAndCreatedAtGreaterThanEqualAndCreatedAtLessThanOrderByCreatedAtAsc(
-                        loginUser.getId(), startDateTime, endDateTime
+                .findCalendarWorkLogs(
+                        loginUser.getId(),
+                        firstDate,
+                        lastDate,
+                        startDateTime,
+                        endDateTime
                 )
                 .stream()
                 .map(this::toWorkLogItem)
                 .toList();
 
+        // A goal is returned when any part of its start~deadline range overlaps this month.
         List<CalendarMonthResponse.GoalItem> goals = goalRepository
-                .findByUserIdAndTargetDateBetweenOrderByTargetDateAscCreatedAtAsc(
-                        loginUser.getId(), firstDate, lastDate
-                )
+                .findOverlappingCalendarRange(loginUser.getId(), firstDate, lastDate)
                 .stream()
                 .map(this::toGoalItem)
                 .toList();
@@ -77,15 +80,32 @@ public class CalendarService {
     }
 
     private CalendarMonthResponse.WorkLogItem toWorkLogItem(WorkLog workLog) {
-        return new CalendarMonthResponse.WorkLogItem(workLog.getId(), workLog.getTitle(), workLog.getCreatedAt());
+        LocalDate workDate = workLog.getWorkDate();
+        if (workDate == null && workLog.getCreatedAt() != null) {
+            workDate = workLog.getCreatedAt().toLocalDate();
+        }
+        return new CalendarMonthResponse.WorkLogItem(
+                workLog.getId(),
+                workLog.getTitle(),
+                workDate,
+                workLog.getCreatedAt()
+        );
     }
 
     private CalendarMonthResponse.GoalItem toGoalItem(Goal goal) {
+        LocalDate startDate = goal.getStartDate() == null ? goal.getTargetDate() : goal.getStartDate();
         boolean overdue = goal.getTargetDate() != null
                 && goal.getTargetDate().isBefore(LocalDate.now())
                 && goal.getStatus() != GoalStatus.COMPLETED;
+
         return new CalendarMonthResponse.GoalItem(
-                goal.getId(), goal.getTitle(), goal.getTargetDate(), goal.getStatus(), goal.getProgress(), overdue
+                goal.getId(),
+                goal.getTitle(),
+                startDate,
+                goal.getTargetDate(),
+                goal.getStatus(),
+                goal.getProgress(),
+                overdue
         );
     }
 

@@ -8,6 +8,7 @@ public class GoalResponse {
     private final Long id;
     private final String title;
     private final String description;
+    private final LocalDate startDate;
     private final LocalDate targetDate;
     private final GoalStatus status;
     private final Integer progress;
@@ -19,6 +20,7 @@ public class GoalResponse {
             Long id,
             String title,
             String description,
+            LocalDate startDate,
             LocalDate targetDate,
             GoalStatus status,
             Integer progress,
@@ -29,6 +31,7 @@ public class GoalResponse {
         this.id = id;
         this.title = title;
         this.description = description;
+        this.startDate = startDate;
         this.targetDate = targetDate;
         this.status = status;
         this.progress = progress;
@@ -40,6 +43,7 @@ public class GoalResponse {
     public Long getId() { return id; }
     public String getTitle() { return title; }
     public String getDescription() { return description; }
+    public LocalDate getStartDate() { return startDate; }
     public LocalDate getTargetDate() { return targetDate; }
     public GoalStatus getStatus() { return status; }
     public Integer getProgress() { return progress; }

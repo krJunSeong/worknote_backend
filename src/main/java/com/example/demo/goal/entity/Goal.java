@@ -34,6 +34,11 @@ public class Goal {
     @Column(columnDefinition = "TEXT")
     private String description;
 
+    /** Start date of the plan range. Existing rows can be null. */
+    @Column(name = "start_date")
+    private LocalDate startDate;
+
+    /** End date / deadline. Kept as target_date for backward compatibility. */
     @Column(name = "target_date", nullable = false)
     private LocalDate targetDate;
 
@@ -64,11 +69,13 @@ public class Goal {
         updatedAt = now;
         if (status == null) status = GoalStatus.PLANNED;
         if (progress == null) progress = 0;
+        if (startDate == null) startDate = targetDate;
     }
 
     @PreUpdate
     public void preUpdate() {
         updatedAt = LocalDateTime.now();
+        if (startDate == null) startDate = targetDate;
     }
 
     public Long getId() { return id; }
@@ -76,6 +83,8 @@ public class Goal {
     public void setTitle(String title) { this.title = title; }
     public String getDescription() { return description; }
     public void setDescription(String description) { this.description = description; }
+    public LocalDate getStartDate() { return startDate; }
+    public void setStartDate(LocalDate startDate) { this.startDate = startDate; }
     public LocalDate getTargetDate() { return targetDate; }
     public void setTargetDate(LocalDate targetDate) { this.targetDate = targetDate; }
     public GoalStatus getStatus() { return status; }

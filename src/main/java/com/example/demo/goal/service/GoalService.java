@@ -1,6 +1,7 @@
 package com.example.demo.goal.service;
 
 import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 
 import org.springframework.security.access.AccessDeniedException;
@@ -9,8 +10,10 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.example.demo.goal.dto.GoalProgressRequest;
 import com.example.demo.goal.dto.GoalRequest;
 import com.example.demo.goal.dto.GoalResponse;
+import com.example.demo.goal.dto.GoalScheduleRequest;
 import com.example.demo.goal.entity.Goal;
 import com.example.demo.goal.model.GoalStatus;
 import com.example.demo.goal.repository.GoalRepository;
@@ -23,6 +26,9 @@ public class GoalService {
 
     private static final int TITLE_MAX_LENGTH = 120;
     private static final int DESCRIPTION_MAX_LENGTH = 3_000;
+    private static final int MIN_YEAR = 2000;
+    private static final int MAX_YEAR = 2100;
+    private static final long MAX_PLAN_DAYS = 3650;
 
     private final GoalRepository goalRepository;
     private final UserRepository userRepository;
@@ -35,7 +41,9 @@ public class GoalService {
     public List<GoalResponse> findAll() {
         User loginUser = getLoginUser();
         return goalRepository.findByUserIdOrderByTargetDateAscCreatedAtDesc(loginUser.getId())
-                .stream().map(this::toResponse).toList();
+                .stream()
+                .map(this::toResponse)
+                .toList();
     }
 
     @Transactional
@@ -43,11 +51,18 @@ public class GoalService {
         validateRequest(request);
         User loginUser = getLoginUser();
 
+        LocalDate targetDate = validateDate(request.getTargetDate(), "목표 마감일");
+        LocalDate startDate = request.getStartDate() == null
+                ? targetDate
+                : validateDate(request.getStartDate(), "목표 시작일");
+        validateSchedule(startDate, targetDate);
+
         Goal goal = new Goal();
         goal.setUser(loginUser);
         goal.setTitle(request.getTitle().trim());
         goal.setDescription(normalizeDescription(request.getDescription()));
-        goal.setTargetDate(request.getTargetDate());
+        goal.setStartDate(startDate);
+        goal.setTargetDate(targetDate);
         goal.setProgress(normalizeProgress(request.getProgress()));
         goal.setStatus(normalizeStatus(request.getStatus(), request.getProgress()));
         normalizeCompletedState(goal);
@@ -62,12 +77,62 @@ public class GoalService {
         User loginUser = getLoginUser();
         Goal goal = findOwnedGoal(id, loginUser.getId());
 
+        LocalDate targetDate = validateDate(request.getTargetDate(), "목표 마감일");
+        LocalDate startDate = request.getStartDate() == null
+                ? effectiveStartDate(goal)
+                : validateDate(request.getStartDate(), "목표 시작일");
+        validateSchedule(startDate, targetDate);
+
         goal.setTitle(request.getTitle().trim());
         goal.setDescription(normalizeDescription(request.getDescription()));
-        goal.setTargetDate(request.getTargetDate());
+        goal.setStartDate(startDate);
+        goal.setTargetDate(targetDate);
         goal.setProgress(normalizeProgress(request.getProgress()));
         goal.setStatus(normalizeStatus(request.getStatus(), request.getProgress()));
         normalizeCompletedState(goal);
+
+        return toResponse(goal);
+    }
+
+    /** Calendar move/resize update. Does not touch title, description or progress. */
+    @Transactional
+    public GoalResponse updateSchedule(Long id, GoalScheduleRequest request) {
+        validateId(id);
+        if (request == null || request.getStartDate() == null || request.getTargetDate() == null) {
+            throw new IllegalArgumentException("목표 시작일과 마감일을 모두 선택해 주세요.");
+        }
+
+        LocalDate startDate = validateDate(request.getStartDate(), "목표 시작일");
+        LocalDate targetDate = validateDate(request.getTargetDate(), "목표 마감일");
+        validateSchedule(startDate, targetDate);
+
+        User loginUser = getLoginUser();
+        Goal goal = findOwnedGoal(id, loginUser.getId());
+        goal.setStartDate(startDate);
+        goal.setTargetDate(targetDate);
+        return toResponse(goal);
+    }
+
+    /** Slider update from the goal list. */
+    @Transactional
+    public GoalResponse updateProgress(Long id, GoalProgressRequest request) {
+        validateId(id);
+        if (request == null || request.getProgress() == null) {
+            throw new IllegalArgumentException("진행률을 입력해 주세요.");
+        }
+
+        int progress = normalizeProgress(request.getProgress());
+        User loginUser = getLoginUser();
+        Goal goal = findOwnedGoal(id, loginUser.getId());
+
+        goal.setProgress(progress);
+        if (progress >= 100) {
+            goal.setStatus(GoalStatus.COMPLETED);
+        } else if (progress <= 0) {
+            goal.setStatus(GoalStatus.PLANNED);
+        } else {
+            goal.setStatus(GoalStatus.IN_PROGRESS);
+        }
 
         return toResponse(goal);
     }
@@ -104,6 +169,10 @@ public class GoalService {
         if (progress != null && (progress < 0 || progress > 100)) {
             throw new IllegalArgumentException("진행률은 0~100 사이여야 합니다.");
         }
+        if (request.getStartDate() != null) {
+            validateDate(request.getStartDate(), "목표 시작일");
+        }
+        validateDate(request.getTargetDate(), "목표 마감일");
     }
 
     private void validateId(Long id) {
@@ -112,8 +181,29 @@ public class GoalService {
         }
     }
 
+    private LocalDate validateDate(LocalDate date, String label) {
+        if (date == null) throw new IllegalArgumentException(label + "을 선택해 주세요.");
+        if (date.getYear() < MIN_YEAR || date.getYear() > MAX_YEAR) {
+            throw new IllegalArgumentException(label + "은 2000~2100 사이여야 합니다.");
+        }
+        return date;
+    }
+
+    private void validateSchedule(LocalDate startDate, LocalDate targetDate) {
+        if (startDate.isAfter(targetDate)) {
+            throw new IllegalArgumentException("목표 시작일은 마감일보다 늦을 수 없습니다.");
+        }
+        if (ChronoUnit.DAYS.between(startDate, targetDate) > MAX_PLAN_DAYS) {
+            throw new IllegalArgumentException("목표 기간은 10년 이하로 설정해 주세요.");
+        }
+    }
+
     private int normalizeProgress(Integer progress) {
-        return progress == null ? 0 : progress;
+        if (progress == null) return 0;
+        if (progress < 0 || progress > 100) {
+            throw new IllegalArgumentException("진행률은 0~100 사이여야 합니다.");
+        }
+        return progress;
     }
 
     private GoalStatus normalizeStatus(GoalStatus status, Integer progress) {
@@ -135,13 +225,18 @@ public class GoalService {
         return description == null ? "" : description.trim();
     }
 
+    private LocalDate effectiveStartDate(Goal goal) {
+        return goal.getStartDate() == null ? goal.getTargetDate() : goal.getStartDate();
+    }
+
     private GoalResponse toResponse(Goal goal) {
+        LocalDate startDate = effectiveStartDate(goal);
         boolean overdue = goal.getTargetDate() != null
                 && goal.getTargetDate().isBefore(LocalDate.now())
                 && goal.getStatus() != GoalStatus.COMPLETED;
 
         return new GoalResponse(
-                goal.getId(), goal.getTitle(), goal.getDescription(), goal.getTargetDate(),
+                goal.getId(), goal.getTitle(), goal.getDescription(), startDate, goal.getTargetDate(),
                 goal.getStatus(), goal.getProgress(), overdue, goal.getCreatedAt(), goal.getUpdatedAt()
         );
     }

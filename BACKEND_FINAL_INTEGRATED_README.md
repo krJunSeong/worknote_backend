@@ -1,72 +1,135 @@
-# WorkNote Backend - current integrated source
+# WorkNote Backend - Integrated Feature / Security Notes
 
-이 소스는 사용자가 업로드한 최신 `demo.zip` 백엔드에 메모 이미지 OCR 백엔드 패치를 합친 현재 통합본이다.
+현재 통합본은 WorkNote의 인증, 업무 기록, AI/OCR, Dashboard, Calendar, Goal Planner, Report 기능을 하나의 Spring Boot 프로젝트로 합친 버전이다.
 
-## 현재 Backend에 포함된 기능
+## 1. Authentication
 
-- Spring Boot / Java 21
-- JWT Stateless 인증
-- PostgreSQL / Supabase 연결 설정
-- WorkLog CRUD 및 기존 Ollama 분석
-- Dashboard / AI Report / PDF
-- Swagger/OpenAPI
-- 메모 이미지 -> Azure AI Document Intelligence OCR -> Ollama -> WorkLog Draft
+- JWT Stateless authentication
+- BCrypt password hashing
+- Backend validation for loginId/password/nickname
+  - loginId: 4~20, 영문/숫자/밑줄(_) allowlist
+  - signup password: 8~64, 특수문자/공백 허용
+  - nickname: 2~12, 문자/숫자/공백/밑줄(_) allowlist
+- Production JWT secret has no hard-coded fallback
+- Local-only fallback is isolated in `application-local.yaml`
 
-## 메모 OCR 신규/수정 핵심 파일
+## 2. WorkLog
 
-- `src/main/java/com/example/demo/ocr/client/OcrClient.java`
-- `src/main/java/com/example/demo/ocr/client/AzureDocumentIntelligenceOcrClient.java`
-- `src/main/java/com/example/demo/work/controller/WorkLogDraftController.java`
-- `src/main/java/com/example/demo/work/service/WorkLogDraftService.java`
-- `src/main/java/com/example/demo/work/response/WorkLogDraftResponse.java`
-- `src/main/java/com/example/demo/ai/service/OllamaService.java`
-- `src/main/resources/application.yaml`
-- `.env.example`
+WorkLog는 원본 생성 시각과 캘린더 날짜를 분리한다.
 
-## OCR API
+```text
+createdAt : 최초 생성 시각. Drag & Drop으로 변경하지 않음.
+workDate  : 사용자가 업무를 수행했다고 지정한 날짜.
+```
 
-`POST /api/work/draft/from-image`
+API:
 
-multipart form:
-- `image`: JPG/JPEG/PNG
-- `language`: `ko` 또는 `ja`
+```text
+POST   /api/work
+GET    /api/work/{userId}
+GET    /api/work/detail/{id}
+PUT    /api/work/{id}
+PATCH  /api/work/{id}/date
+DELETE /api/work/{id}
+```
 
-응답:
-- `title`
-- `content`
-- `recognizedText`
+`detail`, `update`, `delete`, `date` 변경 모두 JWT 소유권을 확인한다.
 
-이 API는 Draft만 생성하며 DB에 직접 저장하지 않는다. 사용자가 Frontend에서 확인/수정한 뒤 기존 WorkLog 저장 API를 사용한다.
+## 3. Calendar
 
-## 배포 환경변수
+```text
+GET /api/calendar?year={year}&month={month}
+```
 
-로컬은 `.env` / `.env.local`에서 실제 값을 관리하고, Render에서는 동일한 값을 Environment Variables로 등록한다.
-`.env.example`에는 placeholder만 포함되어 있다.
+Calendar API는 `userId`를 받지 않는다. 인증 컨텍스트의 사용자만 조회한다.
 
-OCR 관련 주요 값:
+반환 데이터:
 
-- `OCR_AZURE_ENDPOINT`
-- `OCR_AZURE_API_KEY`
-- `OCR_AZURE_API_VERSION`
-- `OCR_AZURE_MODEL_ID`
-- `OCR_AZURE_TIMEOUT_SECONDS`
-- `OCR_AZURE_POLL_INTERVAL_MILLIS`
-- `OCR_MAX_FILE_SIZE`
-- `OCR_MAX_REQUEST_SIZE`
-- `OCR_MAX_FILE_SIZE_BYTES`
-- `OCR_MAX_RECOGNIZED_TEXT_CHARS`
+- WorkLog: id, title, workDate, createdAt
+- Goal: id, title, startDate, targetDate, status, progress, overdue
 
-## 로그인 2분 30초 진행률 변경과의 관계
+Frontend 지원 동작:
 
-최근 추가한 로그인 Cold Start 진행률 / 10분 timeout 처리는 Frontend 전용 변경이다.
-따라서 Backend는 이 OCR 통합본 이후 추가 변경이 없다.
+- WorkLog Drag & Drop → `PATCH /api/work/{id}/date`
+- Goal 이동 → 기간 길이를 유지한 채 `PATCH /api/goals/{id}/schedule`
+- Goal 시작/끝 resize → 동일 schedule API
+- 날짜 더블클릭 → 선택한 `workDate`로 새 WorkLog 생성
+- 완료 Goal → 캘린더에서 체크 표시와 취소선으로 구분
 
-## 검증 메모
+## 4. Goal Planner
 
-현재 실행 환경에서는 Gradle 9.5.1 distribution 다운로드가 네트워크 차단으로 실패하여 전체 `./gradlew compileJava`를 다시 실행할 수 없었다.
-업로드된 기존 fat jar의 dependency를 이용한 부분 컴파일에서는 OCR Service/Client/DTO 등 핵심 Java 소스는 확인할 수 있었으나, 기존 fat jar가 현재 Swagger dependency보다 오래된 산출물이라 신규 Controller까지 동일 방식으로 완전 검증할 수는 없었다.
-실제 로컬 환경에서는 인터넷 연결 상태에서 `./gradlew clean build`로 최종 검증하는 것이 필요하다.
+Goal은 단일 deadline에서 기간형 일정으로 확장되었다.
 
-## 중요
+```text
+startDate  : 시작일
+targetDate : 종료일/마감일
+```
 
-PDF용 실제 폰트 바이너리는 이 전달 ZIP에 포함하지 않았다. 기존 프로젝트의 `src/main/resources/fonts`는 로컬에서 그대로 유지해야 한다.
+API:
+
+```text
+GET    /api/goals
+POST   /api/goals
+PUT    /api/goals/{id}
+PATCH  /api/goals/{id}/schedule
+PATCH  /api/goals/{id}/progress
+DELETE /api/goals/{id}
+```
+
+`PATCH /schedule`과 `PATCH /progress`는 전체 Goal 데이터를 클라이언트가 덮어쓰지 않고 필요한 필드만 변경한다.
+
+프론트의 제목/설명 연필 아이콘 인라인 편집은 `PUT /api/goals/{id}`의 기존 소유권 검증과 길이 검증을 그대로 재사용한다.
+
+## 5. Dashboard IDOR Protection
+
+권장 API:
+
+```text
+GET /api/dashboard
+```
+
+서버가 JWT 사용자 ID를 직접 해석한다.
+
+Backward compatibility:
+
+```text
+GET /api/dashboard/{userId}
+```
+
+요청 userId가 JWT 사용자와 다르면 403.
+
+## 6. AI / OCR Usage Limit
+
+사용량은 메모리가 아니라 DB에 다음 키로 저장한다.
+
+```text
+user + usageDate + feature
+```
+
+기본 제한:
+
+```text
+AI        20/day/user
+AZURE_OCR  5/day/user
+```
+
+OCR Draft는 두 기능을 모두 소비한다.
+
+## 7. OCR
+
+```text
+POST /api/work/draft/from-image
+```
+
+- JPG/JPEG/PNG
+- 서버에서 실제 이미지 포맷 검사
+- 파일 크기 / 이미지 크기 제한
+- Azure AI Document Intelligence OCR
+- OCR 텍스트를 Ollama에 전달하여 WorkLog draft 생성
+- 원본 이미지와 OCR 원문은 WorkNote DB에 저장하지 않음
+
+## 8. Report / PDF
+
+- 누적 WorkLog 기반 AI 프로젝트 보고서
+- PDFBox PDF 출력
+- 한국어/일본어 폰트 분리
