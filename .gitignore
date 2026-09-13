@@ -28,7 +28,6 @@ bin/
 # Environment variables
 .env
 .env.*
-!.env.example
 
 # Local Spring settings
 application-local.yaml

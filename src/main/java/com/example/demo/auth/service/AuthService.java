@@ -10,6 +10,7 @@ import com.example.demo.auth.dto.LoginRequest;
 import com.example.demo.auth.dto.SignupRequest;
 import com.example.demo.auth.jwt.JwtTokenProvider;
 import com.example.demo.auth.response.LoginResponse;
+import com.example.demo.common.exception.InvalidCredentialsException;
 import com.example.demo.user.entity.User;
 import com.example.demo.user.repository.UserRepository;
 
@@ -71,20 +72,14 @@ public class AuthService {
 
         User user = userRepository
                 .findByLoginId(loginId)
-                .orElseThrow(
-                        () -> new IllegalArgumentException(
-                                "아이디 또는 비밀번호가 올바르지 않습니다."
-                        )
-                );
+                .orElseThrow(InvalidCredentialsException::new);
 
         if (!passwordEncoder.matches(
                 request.getPassword(),
                 user.getPassword()
         )) {
 
-            throw new IllegalArgumentException(
-                    "아이디 또는 비밀번호가 올바르지 않습니다."
-            );
+            throw new InvalidCredentialsException();
         }
 
         String accessToken =

@@ -1,135 +1,70 @@
-# WorkNote Backend - Integrated Feature / Security Notes
+# WorkNote Backend - Integrated Feature Notes
 
-현재 통합본은 WorkNote의 인증, 업무 기록, AI/OCR, Dashboard, Calendar, Goal Planner, Report 기능을 하나의 Spring Boot 프로젝트로 합친 버전이다.
+WorkNote 백엔드의 현재 통합 기능과 설계 기준을 정리한 문서입니다.
 
-## 1. Authentication
+## Runtime
 
-- JWT Stateless authentication
-- BCrypt password hashing
-- Backend validation for loginId/password/nickname
-  - loginId: 4~20, 영문/숫자/밑줄(_) allowlist
-  - signup password: 8~64, 특수문자/공백 허용
-  - nickname: 2~12, 문자/숫자/공백/밑줄(_) allowlist
-- Production JWT secret has no hard-coded fallback
-- Local-only fallback is isolated in `application-local.yaml`
+- **Java 21** (Gradle Toolchain)
+- Spring Boot 3.5.4
+- PostgreSQL / Spring Data JPA / Hibernate
+- Spring Security + JWT + BCrypt
+- Ollama AI / Azure AI Document Intelligence OCR
+- Apache PDFBox
 
-## 2. WorkLog
+## Authentication / Validation
 
-WorkLog는 원본 생성 시각과 캘린더 날짜를 분리한다.
+- 로그인 ID: 4~20자, 영문/숫자/밑줄 allowlist
+- 회원가입 비밀번호: 8~64자
+- 닉네임: 2~12자, 문자/숫자/공백/밑줄 allowlist
+- 잘못된 로그인 정보: `401 INVALID_CREDENTIALS`
+- 예상하지 못한 예외: 내부 exception message/stack trace를 응답에 노출하지 않고 일반화된 `500 INTERNAL_SERVER_ERROR` 반환
+- 운영 JWT Secret은 환경변수 필수
 
-```text
-createdAt : 최초 생성 시각. Drag & Drop으로 변경하지 않음.
-workDate  : 사용자가 업무를 수행했다고 지정한 날짜.
-```
+## WorkLog
 
-API:
+- CRUD + 상세조회
+- AI 요약 / 기술 태그 / 난이도 / 예상 면접 질문
+- `createdAt`(최초 생성 이력)과 `workDate`(업무 날짜) 분리
+- Calendar Drag & Drop은 `workDate`만 변경
 
-```text
-POST   /api/work
-GET    /api/work/{userId}
-GET    /api/work/detail/{id}
-PUT    /api/work/{id}
-PATCH  /api/work/{id}/date
-DELETE /api/work/{id}
-```
+## Calendar
 
-`detail`, `update`, `delete`, `date` 변경 모두 JWT 소유권을 확인한다.
+- JWT 사용자 기준 월간 데이터 조회
+- WorkLog 날짜 이동
+- 날짜 더블클릭 빠른 WorkLog 작성
+- Goal 기간 표시, 이동, 시작/종료 Resize
+- 완료 Goal 상태/진행률 제공
 
-## 3. Calendar
+## Goal Planner
 
-```text
-GET /api/calendar?year={year}&month={month}
-```
+- `startDate ~ targetDate` 기간형 목표
+- `PLANNED / IN_PROGRESS / COMPLETED`
+- 0~100 진행률 및 overdue 계산
+- schedule/progress 부분 업데이트
+- 제목/설명 인라인 편집 시에도 소유권 검증 유지
 
-Calendar API는 `userId`를 받지 않는다. 인증 컨텍스트의 사용자만 조회한다.
+## Ownership / IDOR Protection
 
-반환 데이터:
+- Dashboard는 JWT 로그인 사용자를 서버에서 직접 식별
+- WorkLog/Goal 상세·수정·삭제는 로그인 사용자 소유 데이터만 허용
+- 클라이언트에서 전달되는 식별값을 권한 판단의 신뢰 기준으로 사용하지 않음
 
-- WorkLog: id, title, workDate, createdAt
-- Goal: id, title, startDate, targetDate, status, progress, overdue
+## AI / OCR Usage Limit
 
-Frontend 지원 동작:
+- DB에 `user + date + feature` 단위로 일일 사용량 저장
+- AI 20회/일/사용자
+- Azure OCR 5회/일/사용자
+- 초과 시 `429 DAILY_AI_LIMIT_EXCEEDED`
 
-- WorkLog Drag & Drop → `PATCH /api/work/{id}/date`
-- Goal 이동 → 기간 길이를 유지한 채 `PATCH /api/goals/{id}/schedule`
-- Goal 시작/끝 resize → 동일 schedule API
-- 날짜 더블클릭 → 선택한 `workDate`로 새 WorkLog 생성
-- 완료 Goal → 캘린더에서 체크 표시와 취소선으로 구분
+## OCR Security
 
-## 4. Goal Planner
+- 허용 이미지 형식 제한
+- MIME + 실제 이미지 포맷 이중 검사
+- 파일 크기/해상도/OCR 텍스트 길이 제한
+- OCR 후 AI 업무일지 초안 생성
 
-Goal은 단일 deadline에서 기간형 일정으로 확장되었다.
+## Report / PDF
 
-```text
-startDate  : 시작일
-targetDate : 종료일/마감일
-```
-
-API:
-
-```text
-GET    /api/goals
-POST   /api/goals
-PUT    /api/goals/{id}
-PATCH  /api/goals/{id}/schedule
-PATCH  /api/goals/{id}/progress
-DELETE /api/goals/{id}
-```
-
-`PATCH /schedule`과 `PATCH /progress`는 전체 Goal 데이터를 클라이언트가 덮어쓰지 않고 필요한 필드만 변경한다.
-
-프론트의 제목/설명 연필 아이콘 인라인 편집은 `PUT /api/goals/{id}`의 기존 소유권 검증과 길이 검증을 그대로 재사용한다.
-
-## 5. Dashboard IDOR Protection
-
-권장 API:
-
-```text
-GET /api/dashboard
-```
-
-서버가 JWT 사용자 ID를 직접 해석한다.
-
-Backward compatibility:
-
-```text
-GET /api/dashboard/{userId}
-```
-
-요청 userId가 JWT 사용자와 다르면 403.
-
-## 6. AI / OCR Usage Limit
-
-사용량은 메모리가 아니라 DB에 다음 키로 저장한다.
-
-```text
-user + usageDate + feature
-```
-
-기본 제한:
-
-```text
-AI        20/day/user
-AZURE_OCR  5/day/user
-```
-
-OCR Draft는 두 기능을 모두 소비한다.
-
-## 7. OCR
-
-```text
-POST /api/work/draft/from-image
-```
-
-- JPG/JPEG/PNG
-- 서버에서 실제 이미지 포맷 검사
-- 파일 크기 / 이미지 크기 제한
-- Azure AI Document Intelligence OCR
-- OCR 텍스트를 Ollama에 전달하여 WorkLog draft 생성
-- 원본 이미지와 OCR 원문은 WorkNote DB에 저장하지 않음
-
-## 8. Report / PDF
-
-- 누적 WorkLog 기반 AI 프로젝트 보고서
-- PDFBox PDF 출력
-- 한국어/일본어 폰트 분리
+- 누적 WorkLog 기반 AI 보고서
+- PDFBox 출력
+- 한국어/일본어 지원
